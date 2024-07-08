@@ -4,14 +4,14 @@ import cv2
 class CannyDetector():
     def __init__(self, filter_kernel : int, sigma : int): 
         self.filter = self.gaussian_filter(filter_kernel, sigma)
-        self.h_ratio = 0.9 
-        self.l_ratio = 0.05
+        self.h_ratio = 0.9
+        self.l_ratio = 0.85
 
     def detect(self, image : np.array):
-        smoothed_image = self.convole(image, self.filter)
+        smoothed_image = self.convolve(image, self.filter)
         G, theta = self.gradient_maps(smoothed_image)
         Z = self.non_maximum_suppression(G, theta)
-        Z = self.double_threshold(Z, G, self.h_ratio, self.l_ratio)
+        Z = self.threshold(Z, self.h_ratio, self.l_ratio)
         return self.hysteresis(Z)
     
     def gaussian_filter(self, kernel_size : int, sigma : int):
@@ -77,16 +77,24 @@ class CannyDetector():
                     Z[i, j] = 0 
         return Z
 
-    def double_threshold(self, Z : np.array, G : np.array, high_threshold_ratio=0.3, low_threshold_ratio=0.1):
-        strong_i, strong_j = np.where(G >= high_threshold_ratio)
-        weak_i, weak_j = np.where((G <= high_threshold_ratio) & (G >= low_threshold_ratio))
-        suppressed_i, suppressed_j = np.where(G < low_threshold_ratio)
-
-        Z[strong_i, strong_j] = 255
-        Z[weak_i, weak_j] = 25 
-        Z[suppressed_i, suppressed_j] = 0
-
-        return Z
+    def threshold(self, Z : np.array, lowThresholdRatio=0.05, highThresholdRatio=0.09):
+    
+        highThreshold = Z.max() * highThresholdRatio;
+        lowThreshold = highThreshold * lowThresholdRatio;
+        
+        M, N = Z.shape
+        res = np.zeros((M,N), dtype=np.int32)
+        
+        weak = np.int32(25)
+        strong = np.int32(255)
+        
+        strong_i, strong_j = np.where(Z >= highThreshold)
+        weak_i, weak_j = np.where((Z <= highThreshold) & (Z >= lowThreshold))
+        
+        res[strong_i, strong_j] = strong
+        res[weak_i, weak_j] = weak
+        
+        return res
 
     def hysteresis(self, Z : np.array):
         M, N = Z.shape
