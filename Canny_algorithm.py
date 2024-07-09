@@ -1,111 +1,124 @@
 import numpy as np
 import cv2
 
-class CannyDetector():
-    def __init__(self, filter_kernel : int, sigma : int): 
-        self.filter = self.gaussian_filter(filter_kernel, sigma)
-        self.h_ratio = 0.9
-        self.l_ratio = 0.85
+class CannyDetector:
+    def __init__(self, lowThresholdRatio=0.05, highThresholdRatio=0.15, kernel_size=5, sigma=1):
+        self.lowThresholdRatio = lowThresholdRatio
+        self.highThresholdRatio = highThresholdRatio
+        self.kernel_size = kernel_size
+        self.sigma = sigma
 
-    def detect(self, image : np.array):
-        smoothed_image = self.convolve(image, self.filter)
-        G, theta = self.gradient_maps(smoothed_image)
-        Z = self.non_maximum_suppression(G, theta)
-        Z = self.threshold(Z, self.h_ratio, self.l_ratio)
-        return self.hysteresis(Z)
-    
-    def gaussian_filter(self, kernel_size : int, sigma : int):
-        filter = np.zeros((kernel_size, kernel_size))
-        k = (kernel_size - 1)/2
-
-        for i in range(kernel_size):
-            for j in range(kernel_size):
-                filter[i][j] = np.exp(-(((i+1)-(k+1))**2 + ((j+1)-(k+1))**2)/(2 * sigma ** 2)) / (2.0 * np.pi * sigma ** 2)
-
-        return filter
+    def gaussian_kernel(self, size : int, sigma : int =1):
+        kernel_1D = np.linspace(-(size // 2), size // 2, size)
+        for i in range(size):
+            kernel_1D[i] = (1 / (np.sqrt(2 * np.pi) * sigma)) * np.exp(-(kernel_1D[i] ** 2) / (2 * sigma ** 2))
+        kernel_2D = np.outer(kernel_1D.T, kernel_1D.T)
+        kernel_2D *= 1.0 / kernel_2D.max()
+        return kernel_2D
 
     def convolve(self, matrix : np.array, kernel : np.array):
-        # Padding to ensure same size output
-        padding = kernel.shape[0] // 2
-        padded_matrix = np.pad(matrix, pad_width=padding)
-        result = np.zeros_like(matrix)
+        image_height, image_width = matrix.shape
+        kernel_height, kernel_width = kernel.shape
+        output = np.zeros(matrix.shape)
+        pad_height = kernel_height // 2
+        pad_width = kernel_width // 2
+        padded_image = np.pad(matrix, ((pad_height, pad_height), (pad_width, pad_width)), mode='constant')
+        for x in range(image_width):
+            for y in range(image_height):
+                output[y, x] = (kernel * padded_image[y: y + kernel_height, x: x + kernel_width]).sum()
+        
+        return output
 
-        for i in range(matrix.shape[0]):
-            for j in range(matrix.shape[1]):
-                convolve_output = padded_matrix[i:i+kernel.shape[0], j:j+kernel.shape[1]] * kernel
-                result[i][j] = np.sum(convolve_output)
+    def gaussian_blur(self, matrix : np.array, kernel_size : int = 5, sigma : int = 1):
+        kernel = self.gaussian_kernel(kernel_size, sigma)
+        return self.convolve(matrix, kernel)
 
-        return result
-
-    def gradient_maps(self, matrix : np.array):
-        # Sobel operators
+    def sobel_filters(self, matrix : np.array):
         Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
         Ky = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
-
+        
+        
         Ix = self.convolve(matrix, Kx)
         Iy = self.convolve(matrix, Ky)
-
-        G = np.sqrt(Ix ** 2 + Iy ** 2) * 255 / np.max(np.sqrt(Ix ** 2 + Iy ** 2)) # Gradients in X and Y direction
-        theta = np.arctan2(Iy, Ix) * 180 / np.pi # Converting Radians to angles
-        theta[theta < 0] += 180
+        
+        G = np.hypot(Ix, Iy)
+        G = G / G.max() * 255
+        theta = np.arctan2(Iy, Ix)
+        
         return G, theta
 
-    def non_maximum_suppression(self, G : np.array, theta : np.array): 
-        Z = np.zeros_like(G)
-
-        for i in range(1, G.shape[0]-1): 
-            for j in range(1, G.shape[1]-1):
-                angle = theta[i,j]
-                
-                if(0 <= angle <= 22.5 or 157.5 <= angle <= 180):
-                    a = G[i+1, j]
-                    b = G[i-1, j]
-                elif(22.5 <= angle <= 67.5): 
-                    a = G[i+1, j+1]
-                    b = G[i-1, j-1]
-                elif(67.5 <= angle <= 112.5): 
-                    a = G[i, j+1]
-                    b = G[i, j-1]
-                elif(112.5 <= angle <= 157.5): 
-                    a = G[i+1, j-1]
-                    b = G[i-1, j+1]
-
-                
-                if(G[i, j] >= a and G[i, j] >= b): 
-                    Z[i, j] = G[i, j]
-                else: 
-                    Z[i, j] = 0 
+    def non_maximum_suppression(self, image, D):
+        M, N = image.shape
+        Z = np.zeros((M, N), dtype=np.int32)
+        angle = D * 180. / np.pi
+        angle[angle < 0] += 180
+        
+        for i in range(1, M-1):
+            for j in range(1, N-1):
+                try:
+                    q = 255
+                    r = 255
+                    
+                    if (0 <= angle[i, j] < 22.5) or (157.5 <= angle[i, j] <= 180):
+                        q = image[i, j+1]
+                        r = image[i, j-1]
+                    elif (22.5 <= angle[i, j] < 67.5):
+                        q = image[i+1, j-1]
+                        r = image[i-1, j+1]
+                    elif (67.5 <= angle[i, j] < 112.5):
+                        q = image[i+1, j]
+                        r = image[i-1, j]
+                    elif (112.5 <= angle[i, j] < 157.5):
+                        q = image[i-1, j-1]
+                        r = image[i+1, j+1]
+                    
+                    if (image[i, j] >= q) and (image[i, j] >= r):
+                        Z[i, j] = image[i, j]
+                    else:
+                        Z[i, j] = 0
+                except IndexError as e:
+                    pass
+        
         return Z
 
-    def threshold(self, Z : np.array, lowThresholdRatio=0.05, highThresholdRatio=0.09):
-    
-        highThreshold = Z.max() * highThresholdRatio;
-        lowThreshold = highThreshold * lowThresholdRatio;
+    def threshold(self, image, lowThresholdRatio=0.05, highThresholdRatio=0.15):
+        highThreshold = image.max() * highThresholdRatio
+        lowThreshold = highThreshold * lowThresholdRatio
         
-        M, N = Z.shape
-        res = np.zeros((M,N), dtype=np.int32)
+        M, N = image.shape
+        res = np.zeros((M, N), dtype=np.int32)
         
         weak = np.int32(25)
         strong = np.int32(255)
         
-        strong_i, strong_j = np.where(Z >= highThreshold)
-        weak_i, weak_j = np.where((Z <= highThreshold) & (Z >= lowThreshold))
+        strong_i, strong_j = np.where(image >= highThreshold)
+        weak_i, weak_j = np.where((image <= highThreshold) & (image >= lowThreshold))
         
         res[strong_i, strong_j] = strong
         res[weak_i, weak_j] = weak
         
-        return res
+        return res, weak, strong
 
-    def hysteresis(self, Z : np.array):
-        M, N = Z.shape
+    def hysteresis(self, image, weak, strong=255):
+        M, N = image.shape
         for i in range(1, M-1):
             for j in range(1, N-1):
-                if(Z[i, j] == 25):
+                if (image[i, j] == weak):
                     try:
-                        if(Z[i-1, j] == 255 or Z[i+1, j] == 255 or Z[i, j-1] == 255 or Z[i, j+1] == 255 or Z[i-1, j-1] == 255 or Z[i-1, j+1] == 255 or Z[i+1, j-1] == 255 or Z[i+1, j+1] == 255):
-                            Z[i,j] = 255 
-                        else: 
-                            Z[i,j] = 0
-                    except IndexError:
+                        if ((image[i+1, j-1] == strong) or (image[i+1, j] == strong) or (image[i+1, j+1] == strong)
+                            or (image[i, j-1] == strong) or (image[i, j+1] == strong)
+                            or (image[i-1, j-1] == strong) or (image[i-1, j] == strong) or (image[i-1, j+1] == strong)):
+                            image[i, j] = strong
+                        else:
+                            image[i, j] = 0
+                    except IndexError as e:
                         pass
-        return Z
+        return image
+
+    def detect(self, image):
+        blurred_image = self.gaussian_blur(image, self.kernel_size, self.sigma)
+        gradient_magnitude, gradient_direction = self.sobel_filters(blurred_image)
+        non_max_image = self.non_maximum_suppression(gradient_magnitude, gradient_direction)
+        threshold_image, weak, strong = self.threshold(non_max_image, self.lowThresholdRatio, self.highThresholdRatio)
+        canny_image = self.hysteresis(threshold_image, weak, strong)
+        return canny_image
