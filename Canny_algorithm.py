@@ -1,12 +1,16 @@
 import numpy as np
 import cv2
+from numpy.fft import rfftn as np_fft
+from numpy.fft import irfftn as inv_np_fft
 
 class CannyDetector:
-    def __init__(self, lowThresholdRatio=0.05, highThresholdRatio=0.15, kernel_size=5, sigma=1):
+    def __init__(self, lowThresholdRatio=0.05, highThresholdRatio=0.15, kernel_size=5, sigma=5, convolve : bool = True):
         self.lowThresholdRatio = lowThresholdRatio
         self.highThresholdRatio = highThresholdRatio
         self.kernel_size = kernel_size
         self.sigma = sigma
+        
+        self.fft = convolve
 
     def gaussian_kernel(self, size : int, sigma : int =1):
         kernel_1D = np.linspace(-(size // 2), size // 2, size)
@@ -15,6 +19,10 @@ class CannyDetector:
         kernel_2D = np.outer(kernel_1D.T, kernel_1D.T)
         kernel_2D *= 1.0 / kernel_2D.max()
         return kernel_2D
+    
+    def fft_convolve(self, I, F):
+        """ FFT convolution with NumPy. """
+        return inv_np_fft(np_fft(I) * np_fft(F, I.shape))
 
     def convolve(self, matrix : np.array, kernel : np.array):
         image_height, image_width = matrix.shape
@@ -31,15 +39,22 @@ class CannyDetector:
 
     def gaussian_blur(self, matrix : np.array, kernel_size : int = 5, sigma : int = 1):
         kernel = self.gaussian_kernel(kernel_size, sigma)
-        return self.convolve(matrix, kernel)
+
+        if self.fft: 
+            return self.fft_convolve(matrix, kernel)
+        else: 
+            return self.convolve(matrix, kernel)
 
     def sobel_filters(self, matrix : np.array):
         Kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
         Ky = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
         
-        
-        Ix = self.convolve(matrix, Kx)
-        Iy = self.convolve(matrix, Ky)
+        if self.fft:
+            Ix = self.fft_convolve(matrix, Kx)
+            Iy = self.fft_convolve(matrix, Ky)
+        else: 
+            Ix = self.convolve(matrix, Kx)
+            Iy = self.convolve(matrix, Ky)
         
         G = np.hypot(Ix, Iy)
         G = G / G.max() * 255
@@ -122,3 +137,17 @@ class CannyDetector:
         threshold_image, weak, strong = self.threshold(non_max_image, self.lowThresholdRatio, self.highThresholdRatio)
         canny_image = self.hysteresis(threshold_image, weak, strong)
         return canny_image
+    
+def apply_count(frame: np.array, contour: np.array): 
+    if len(frame.shape) == 2 or frame.shape[2] == 1:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        
+    contour_image = np.zeros_like(frame)
+    
+    contours, _ = cv2.findContours(contour.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    cv2.drawContours(contour_image, contours, -1, (0, 255, 0), 1)  # Green contours with thickness 1
+    
+    image_with_contours = cv2.addWeighted(frame, 0.8, contour_image, 1, 0)
+    
+    return image_with_contours

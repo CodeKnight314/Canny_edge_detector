@@ -6,6 +6,8 @@ from tqdm import tqdm
 import cv2 
 
 def main(detector : CannyDetector, input_dir : str, output_dir : str):
+    os.makedirs(output_dir, exist_ok=True)
+    
     images = glob(os.path.join(input_dir, "*"))
     for img in tqdm(images, desc="[EDGE DETECTION]"):
         image = cv2.imread(img, 0)        
@@ -13,6 +15,11 @@ def main(detector : CannyDetector, input_dir : str, output_dir : str):
 
         output_path = os.path.join(output_dir, os.path.basename(img))
         cv2.imwrite(output_path, edges)
+
+        frame = cv2.imread(img)
+        image_with_contour = apply_count(frame, edges)
+        contour_path = os.path.join(output_dir, "Contour_"+os.path.basename(img))
+        cv2.imwrite(contour_path, image_with_contour)
     
     print("[INFO] Batch Edge Detection complete.")
 
