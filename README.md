@@ -7,13 +7,13 @@ This repository is built for educational purposes on edge detection using Canny 
 - For image inference, run the following code snippet.
 
 ```python
-python image_inference.py --input_path path/to/image_folder --output_path path/to/output_folder
+python image_inference.py --input_dir path/to/image_folder --output_dir path/to/output_folder
 ```
 
 - For video inference, run the following code snippet.
 
 ```python
-python video_inference.py --input_path path/to/video.mp4 --output_path path/to/output.mp4
+python video_inference.py --input_video path/to/video.mp4 --output_video path/to/output.mp4
 ```
 
 ## Visual Results!
