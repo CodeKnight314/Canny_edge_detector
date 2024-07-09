@@ -1,18 +1,30 @@
 import argparse
-from Canny_algorithm import * 
 import os
-from tqdm import tqdm
 import cv2
+import numpy as np
+from tqdm import tqdm
+from Canny_algorithm import CannyDetector
+
+def apply_count(frame, edges):
+    edges = edges.astype(np.uint8)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    image_with_contour = cv2.drawContours(frame.copy(), contours, -1, (0, 255, 0), 1)
+    return image_with_contour
 
 def main_video(detector: CannyDetector, input_video: str, output_video: str):
-    cap = cv2.VideoCapture(input_video)
+    if not os.path.exists(input_video):
+        raise FileNotFoundError(f"Input video file '{input_video}' does not exist.")
     
+    cap = cv2.VideoCapture(input_video)
+    if not cap.isOpened():
+        raise IOError(f"Error opening video file '{input_video}'.")
+
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for output video
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    contour_out = cv2.VideoWriter(f"Contour_{output_video}", fourcc, fps, (width, height), isColor=True)
+    out = cv2.VideoWriter(output_video, fourcc, fps, (width, height), isColor=True)
     
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -24,11 +36,13 @@ def main_video(detector: CannyDetector, input_video: str, output_video: str):
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         edges = detector.detect(gray_frame)
 
-        image_with_contour = apply_count(frame, edges)
-        contour_out.write(image_with_contour)
+        # Convert edges to uint8 before converting to a 3-channel image
+        edges_uint8 = edges.astype(np.uint8)
+        edges_colored = cv2.cvtColor(edges_uint8, cv2.COLOR_GRAY2BGR)
+        out.write(edges_colored)
     
     cap.release()
-    contour_out.release()
+    out.release()
     print("[INFO] Video Edge Detection complete.")
 
 if __name__ == "__main__": 
