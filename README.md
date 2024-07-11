@@ -19,5 +19,5 @@ python video_inference.py --input_video path/to/video.mp4 --output_video path/to
 ```
 
 ## Visual Results!
-- Video
+Click on GIF to see full 1 minute video result.
 [![GIF Example of Canny Edge Detection](Video.gif)](https://www.youtube.com/watch?v=7okfMyesJOs&ab_channel=CodeKnight)
