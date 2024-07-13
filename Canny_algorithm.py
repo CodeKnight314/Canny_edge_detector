@@ -12,7 +12,7 @@ class CannyDetector:
         
         self.fft = convolve
 
-    def gaussian_kernel(self, size : int, sigma : int =1):
+    def gaussian_kernel(self, size : int, sigma : int = 1):
         kernel_1D = np.linspace(-(size // 2), size // 2, size)
         for i in range(size):
             kernel_1D[i] = (1 / (np.sqrt(2 * np.pi) * sigma)) * np.exp(-(kernel_1D[i] ** 2) / (2 * sigma ** 2))
@@ -20,7 +20,7 @@ class CannyDetector:
         kernel_2D *= 1.0 / kernel_2D.max()
         return kernel_2D
     
-    def fft_convolve(self, I, F):
+    def fft_convolve(self, I : np.array, F : np.array):
         """ FFT convolution with NumPy. """
         return inv_np_fft(np_fft(I) * np_fft(F, I.shape))
 
